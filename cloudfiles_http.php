@@ -135,7 +135,7 @@ class CF_Http
         $this->dbug = False;
         $this->cabundle_path = NULL;
         $this->api_version = $api_version;
-        $this->error_str = NULL;
+        $this->error_str = "";
 
         $this->storage_url = NULL;
         $this->cdnm_url = NULL;
@@ -162,7 +162,7 @@ class CF_Http
         $this->_user_write_progress_callback_func = NULL;
         $this->_write_callback_type = NULL;
         $this->_text_list = array();
-	$this->_return_list = NULL;
+        $this->_return_list = NULL;
         $this->_account_metadata = array();
         $this->_account_key = NULL;
         $this->_account_container_count = 0;
@@ -195,11 +195,11 @@ class CF_Http
         # variable.
         $OS_CAFILE_NONUPDATED=array(
             "win","dar"
-        ); 
+        );
 
         if (in_array((strtolower (substr(PHP_OS, 0,3))), $OS_CAFILE_NONUPDATED))
             $this->ssl_use_cabundle();
-        
+
     }
 
     function ssl_use_cabundle($path=NULL)
@@ -234,9 +234,9 @@ class CF_Http
                 sprintf("%s: %s", AUTH_USER_HEADER, $user),
                 sprintf("%s: %s", AUTH_KEY_HEADER, $pass),
                 );
-	    $path[] = $host;
+            $path[] = $host;
         }
-	$path[] = "v1.0";
+        $path[] = "v1.0";
         $url = implode("/", $path);
 
         $curl_ch = curl_init();
@@ -255,7 +255,13 @@ class CF_Http
         curl_setopt($curl_ch, CURLOPT_CONNECTTIMEOUT, 10);
         curl_setopt($curl_ch, CURLOPT_URL, $url);
         curl_exec($curl_ch);
+        $curl_error = curl_error($curl_ch);
         curl_close($curl_ch);
+
+        if (!empty($curl_error))
+        {
+            $this->error_str = $curl_error."\n";
+        }
 
         return array($this->response_status, $this->response_reason,
             $this->storage_url, $this->cdnm_url, $this->auth_token);
@@ -271,7 +277,7 @@ class CF_Http
         $this->_write_callback_type = "TEXT_LIST";
         if ($enabled_only)
         {
-            $return_code = $this->_send_request($conn_type, $url_path . 
+            $return_code = $this->_send_request($conn_type, $url_path .
             '/?enabled_only=true');
         }
         else
@@ -283,20 +289,22 @@ class CF_Http
             return array(0,$this->error_str,array());
         }
         if ($return_code == 401) {
-            return array($return_code,"Unauthorized",array());
+            $this->error_str .= "Unauthorized";
+            return array($return_code,$this->error_str,array());
         }
         if ($return_code == 404) {
-            return array($return_code,"Account not found.",array());
+            $this->error_str .= "Account not found.";
+            return array($return_code,$this->error_str,array());
         }
         if ($return_code == 204) {
-            return array($return_code,"Account has no CDN enabled Containers.",
-                array());
+            $this->error_str .= "Account has no CDN enabled Containers.";
+            return array($return_code,$this->error_str,array());
         }
         if ($return_code == 200) {
-	    $this->create_array();
+            $this->create_array();
             return array($return_code,$this->response_reason,$this->_text_list);
         }
-        $this->error_str = "Unexpected HTTP response: ".$this->response_reason;
+        $this->error_str .= "Unexpected HTTP response: ".$this->response_reason;
         return array($return_code,$this->error_str,array());
     }
 
@@ -337,15 +345,15 @@ class CF_Http
             );
         $return_code = $this->_send_request("DEL_POST",$url_path,$hdrs,"POST");
         if ($return_code == 401) {
-            $this->error_str = "Unauthorized";
+            $this->error_str .= "Unauthorized";
             return array($return_code, $this->error_str, NULL);
         }
         if ($return_code == 404) {
-            $this->error_str = "Container not found.";
+            $this->error_str .= "Container not found.";
             return array($return_code, $this->error_str, NULL);
         }
         if ($return_code != 202) {
-            $this->error_str="Unexpected HTTP response: ".$this->response_reason;
+            $this->error_str .= "Unexpected HTTP response: ".$this->response_reason;
             return array($return_code, $this->error_str, NULL);
         }
         return array($return_code, "Accepted", $this->_cdn_uri, $this->_cdn_ssl_uri);
@@ -361,7 +369,7 @@ class CF_Http
 
         if ($container_name != "0" and !isset($container_name))
             throw new SyntaxException("Container name not set.");
-        
+
         $url_path = $this->_make_path("CDN", $container_name);
         $hdrs = array(
             CDN_ENABLED => "True",
@@ -369,12 +377,12 @@ class CF_Http
             );
         $return_code = $this->_send_request("PUT_CONT", $url_path, $hdrs);
         if ($return_code == 401) {
-            $this->error_str = "Unauthorized";
-            return array($return_code,$this->response_reason,False);
+            $this->error_str .= "Unauthorized";
+            return array($return_code,$this->error_str,False);
         }
         if (!in_array($return_code, array(201,202))) {
-            $this->error_str="Unexpected HTTP response: ".$this->response_reason;
-            return array($return_code,$this->response_reason,False);
+            $this->error_str .= "Unexpected HTTP response: ".$this->response_reason;
+            return array($return_code,$this->error_str,False);
         }
         return array($return_code,$this->response_reason,$this->_cdn_uri,
                      $this->_cdn_ssl_uri);
@@ -389,20 +397,20 @@ class CF_Http
 
         if ($container_name != "0" and !isset($container_name))
             throw new SyntaxException("Container name not set.");
-        
+
         $url_path = $this->_make_path("CDN", $container_name);
         $hdrs = array(CDN_ENABLED => "False");
         $return_code = $this->_send_request("DEL_POST",$url_path,$hdrs,"POST");
         if ($return_code == 401) {
-            $this->error_str = "Unauthorized";
+            $this->error_str .= "Unauthorized";
             return array($return_code, $this->error_str);
         }
         if ($return_code == 404) {
-            $this->error_str = "Container not found.";
+            $this->error_str .= "Container not found.";
             return array($return_code, $this->error_str);
         }
         if ($return_code != 202) {
-            $this->error_str="Unexpected HTTP response: ".$this->response_reason;
+            $this->error_str .= "Unexpected HTTP response: ".$this->response_reason;
             return array($return_code, $this->error_str);
         }
         return array($return_code, "Accepted");
@@ -417,7 +425,7 @@ class CF_Http
 
         if ($container_name != "0" and !isset($container_name))
             throw new SyntaxException("Container name not set.");
-        
+
         $conn_type = "HEAD";
         $url_path = $this->_make_path("CDN", $container_name);
         $return_code = $this->_send_request($conn_type, $url_path, NULL, "GET", True);
@@ -427,13 +435,15 @@ class CF_Http
             return array(0,$this->error_str,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
         }
         if ($return_code == 401) {
-            return array($return_code,"Unauthorized",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+            $this->error_str .= "Unauthorized";
+            return array($return_code,$this->error_str,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
         }
         if ($return_code == 404) {
-            return array($return_code,"Account not found.",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+            $this->error_str .= "Account not found.";
+            return array($return_code,$this->error_str,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
         }
         if ($return_code == 204) {
-            return array($return_code,$this->response_reason,
+            return array($return_code,$this->error_str . $this->response_reason,
                 $this->_cdn_enabled, $this->_cdn_ssl_uri,
                 $this->_cdn_streaming_uri,
                 $this->_cdn_uri, $this->_cdn_ttl,
@@ -443,11 +453,11 @@ class CF_Http
                 );
         }
         return array($return_code,$this->response_reason,
-                     NULL,NULL,NULL,NULL,
-                     $this->_cdn_log_retention,
-                     $this->_cdn_acl_user_agent,
-                     $this->_cdn_acl_referrer,
-                     NULL
+            NULL,NULL,NULL,NULL,
+            $this->_cdn_log_retention,
+            $this->_cdn_acl_user_agent,
+            $this->_cdn_acl_referrer,
+            NULL
             );
     }
 
@@ -478,17 +488,18 @@ class CF_Http
             return array(0,$this->error_str,array());
         }
         if ($return_code == 204) {
-            return array($return_code, "Account has no containers.", array());
+            $this->error_str .= "Account has no containers.";
+            return array($return_code, $this->error_str, array());
         }
         if ($return_code == 404) {
-            $this->error_str = "Invalid account name for authentication token.";
+            $this->error_str .= "Invalid account name for authentication token.";
             return array($return_code,$this->error_str,array());
         }
         if ($return_code == 200) {
-	    $this->create_array();
+	         $this->create_array();
             return array($return_code, $this->response_reason, $this->_text_list);
         }
-        $this->error_str = "Unexpected HTTP response: ".$this->response_reason;
+        $this->error_str .= "Unexpected HTTP response: ".$this->response_reason;
         return array($return_code,$this->error_str,array());
     }
 
@@ -519,17 +530,18 @@ class CF_Http
             return array(0,$this->error_str,array());
         }
         if ($return_code == 204) {
-            return array($return_code, "Account has no containers.", array());
+            $this->error_str .= "Account has no containers.";
+            return array($return_code, $this->error_str, array());
         }
         if ($return_code == 404) {
-            $this->error_str = "Invalid account name for authentication token.";
+            $this->error_str .= "Invalid account name for authentication token.";
             return array($return_code,$this->error_str,array());
         }
         if ($return_code == 200) {
             $json_body = json_decode($this->_obj_write_string, True);
             return array($return_code, $this->response_reason, $json_body);
         }
-        $this->error_str = "Unexpected HTTP response: ".$this->response_reason;
+        $this->error_str .= "Unexpected HTTP response: ".$this->response_reason;
         return array($return_code,$this->error_str,array());
     }
 
@@ -547,10 +559,11 @@ class CF_Http
             return array(0,$this->error_str,0,0, NULL, array());
         }
         if ($return_code == 404) {
-            return array($return_code,"Account not found.",0,0, NULL, array());
+            $this->error_str .= "Account not found.";
+            return array($return_code,$this->error_str,0,0, NULL, array());
         }
         if ($return_code == 204) {
-            return array($return_code,$this->response_reason,
+            return array($return_code,$this->error_str . $this->response_reason,
                 $this->_account_container_count, $this->_account_bytes_used,
                 $this->_account_key, $this->account_metadata);
         }
@@ -597,13 +610,13 @@ class CF_Http
             $this->error_str .= ": Failed to obtain valid HTTP response.";;
             break;
         case 409:
-            $this->error_str = "Container must be empty prior to removing it.";
+            $this->error_str .= "Container must be empty prior to removing it.";
             break;
         case 404:
-            $this->error_str = "Specified container did not exist to delete.";
+            $this->error_str .= "Specified container did not exist to delete.";
             break;
         default:
-            $this->error_str = "Unexpected HTTP return code: $return_code.";
+            $this->error_str .= "Unexpected HTTP return code: $return_code.";
         }
         return $return_code;
     }
@@ -636,7 +649,7 @@ class CF_Http
         if (!empty($params)) {
             $url_path .= "?" . implode("&", $params);
         }
- 
+
         $conn_type = "GET_CALL";
         $this->_write_callback_type = "TEXT_LIST";
         $return_code = $this->_send_request($conn_type,$url_path);
@@ -646,18 +659,18 @@ class CF_Http
             return array(0,$this->error_str,array());
         }
         if ($return_code == 204) {
-            $this->error_str = "Container has no Objects.";
+            $this->error_str .= "Container has no Objects.";
             return array($return_code,$this->error_str,array());
         }
         if ($return_code == 404) {
-            $this->error_str = "Container has no Objects.";
+            $this->error_str .= "Container has no Objects.";
             return array($return_code,$this->error_str,array());
         }
         if ($return_code == 200) {
-	    $this->create_array();	
+            $this->create_array();
             return array($return_code,$this->response_reason, $this->_text_list);
         }
-        $this->error_str = "Unexpected HTTP response code: $return_code";
+        $this->error_str .= "Unexpected HTTP response code: $return_code";
         return array(0,$this->error_str,array());
     }
 
@@ -666,7 +679,7 @@ class CF_Http
     function get_objects($cname,$limit=0,$marker=NULL,$prefix=NULL,$path=NULL,$delimiter=NULL)
     {
         if (strlen($cname) == 0) {
-            $this->error_str = "Container name not set.";
+            $this->error_str .= "Container name not set.";
             return array(0, $this->error_str, array());
         }
         $url_path = $this->_make_path("STORAGE", $cname);
@@ -692,7 +705,7 @@ class CF_Http
         if (!empty($params)) {
             $url_path .= "?" . implode("&", $params);
         }
- 
+
         $conn_type = "GET_CALL";
         $this->_write_callback_type = "OBJECT_STRING";
         $return_code = $this->_send_request($conn_type,$url_path);
@@ -702,18 +715,18 @@ class CF_Http
             return array(0,$this->error_str,array());
         }
         if ($return_code == 204) {
-            $this->error_str = "Container has no Objects.";
+            $this->error_str .= "Container has no Objects.";
             return array($return_code,$this->error_str,array());
         }
         if ($return_code == 404) {
-            $this->error_str = "Container has no Objects.";
+            $this->error_str .= "Container has no Objects.";
             return array($return_code,$this->error_str,array());
         }
         if ($return_code == 200) {
             $json_body = json_decode($this->_obj_write_string, True);
             return array($return_code,$this->response_reason, $json_body);
         }
-        $this->error_str = "Unexpected HTTP response code: $return_code";
+        $this->error_str .= "Unexpected HTTP response code: $return_code";
         return array(0,$this->error_str,array());
     }
 
@@ -724,15 +737,15 @@ class CF_Http
     {
 
         if ($container_name == "") {
-            $this->error_str = "Container name not set.";
+            $this->error_str .= "Container name not set.";
             return False;
         }
-        
+
         if ($container_name != "0" and !isset($container_name)) {
-            $this->error_str = "Container name not set.";
+            $this->error_str .= "Container name not set.";
             return False;
         }
-    
+
         $conn_type = "HEAD";
 
         $url_path = $this->_make_path("STORAGE", $container_name);
@@ -743,10 +756,11 @@ class CF_Http
             return array(0,$this->error_str,0,0, array());
         }
         if ($return_code == 404) {
-            return array($return_code,"Container not found.",0,0, array());
+            $this->error_str .= "Container not found.";
+            return array($return_code,$this->error_str,0,0, array());
         }
         if ($return_code == 204 || $return_code == 200) {
-            return array($return_code,$this->response_reason,
+            return array($return_code,$this->error_str . $this->response_reason,
                 $this->_container_object_count, $this->_container_bytes_used,
                 $this->_container_metadata);
         }
@@ -773,15 +787,15 @@ class CF_Http
             return array($return_code0,$this->error_str,NULL);
         }
         if ($return_code == 404) {
-            $this->error_str = "Object not found.";
+            $this->error_str .= "Object not found.";
             return array($return_code0,$this->error_str,NULL);
         }
         if (($return_code < 200) || ($return_code > 299
                 && $return_code != 412 && $return_code != 304)) {
-            $this->error_str = "Unexpected HTTP return code: $return_code";
+            $this->error_str .= "Unexpected HTTP return code: $return_code";
             return array($return_code,$this->error_str,NULL);
         }
-        return array($return_code,$this->response_reason, $this->_obj_write_string);
+        return array($return_code,$this->error_str . $this->response_reason, $this->_obj_write_string);
     }
 
     # GET /v1/Account/Container/Object
@@ -809,15 +823,15 @@ class CF_Http
             return array($return_code,$this->error_str);
         }
         if ($return_code == 404) {
-            $this->error_str = "Object not found.";
+            $this->error_str .= "Object not found.";
             return array($return_code,$this->error_str);
         }
         if (($return_code < 200) || ($return_code > 299
                 && $return_code != 412 && $return_code != 304)) {
-            $this->error_str = "Unexpected HTTP return code: $return_code";
+            $this->error_str .= "Unexpected HTTP return code: $return_code";
             return array($return_code,$this->error_str);
         }
-        return array($return_code,$this->response_reason);
+        return array($return_code,$this->error_str . $this->response_reason);
     }
 
     # PUT /v1/Account/Container/Object
@@ -868,15 +882,15 @@ class CF_Http
             return array(0,$this->error_str,NULL);
         }
         if ($return_code == 412) {
-            $this->error_str = "Missing Content-Type header";
+            $this->error_str .= "Missing Content-Type header";
             return array($return_code,$this->error_str,NULL);
         }
         if ($return_code == 422) {
-            $this->error_str = "Derived and computed checksums do not match.";
+            $this->error_str .= "Derived and computed checksums do not match.";
             return array($return_code,$this->error_str,NULL);
         }
         if ($return_code != 201) {
-            $this->error_str = "Unexpected HTTP return code: $return_code";
+            $this->error_str .= "Unexpected HTTP return code: $return_code";
             return array($return_code,$this->error_str,NULL);
         }
         return array($return_code,$this->response_reason,$this->_obj_etag);
@@ -900,10 +914,10 @@ class CF_Http
             $return_code = 0;
             break;
         case 404:
-            $this->error_str = "Account, Container, or Object not found.";
+            $this->error_str .= "Account, Container, or Object not found.";
             break;
         default:
-            $this->error_str = "Unexpected HTTP return code: $return_code";
+            $this->error_str .= "Unexpected HTTP return code: $return_code";
             break;
         }
         return $return_code;
@@ -927,10 +941,10 @@ class CF_Http
             $return_code = 0;
             break;
         case 404:
-            $this->error_str = "Account, Container, or Object not found.";
+            $this->error_str .= "Account, Container, or Object not found.";
             break;
         default:
-            $this->error_str = "Unexpected HTTP return code: $return_code";
+            $this->error_str .= "Unexpected HTTP return code: $return_code";
             break;
         }
         return $return_code;
@@ -947,7 +961,7 @@ class CF_Http
 
         # TODO: The is_array check isn't in sync with the error message
         if (!$obj->manifest && !(is_array($obj->metadata) || is_array($obj->headers))) {
-            $this->error_str = "Metadata and headers arrays are empty.";
+            $this->error_str .= "Metadata and headers arrays are empty.";
             return 0;
         }
 
@@ -963,10 +977,10 @@ class CF_Http
             $return_code = 0;
             break;
         case 404:
-            $this->error_str = "Account, Container, or Object not found.";
+            $this->error_str .= "Account, Container, or Object not found.";
             break;
         default:
-            $this->error_str = "Unexpected HTTP return code: $return_code";
+            $this->error_str .= "Unexpected HTTP return code: $return_code";
             break;
         }
         return $return_code;
@@ -993,11 +1007,11 @@ class CF_Http
         }
 
         if ($return_code == 404) {
-            return array($return_code, $this->response_reason,
+            return array($return_code, $this->error_str . $this->response_reason,
                 NULL, NULL, NULL, NULL, array(), NULL, NULL, NULL, array());
         }
         if ($return_code == 204 || $return_code == 200) {
-            return array($return_code,$this->response_reason,
+            return array($return_code,$this->error_str . $this->response_reason,
                 $this->_obj_etag,
                 $this->_obj_last_modified,
                 $this->_obj_content_type,
@@ -1008,7 +1022,7 @@ class CF_Http
                 $this->_obj_delete_after,
                 $this->_obj_headers);
         }
-        $this->error_str = "Unexpected HTTP return code: $return_code";
+        $this->error_str .= "Unexpected HTTP return code: $return_code";
         return array($return_code, $this->error_str." ".$this->response_reason,
                 NULL, NULL, NULL, NULL, array(), NULL, NULL, NULL, array());
     }
@@ -1018,27 +1032,27 @@ class CF_Http
     function copy_object($src_obj_name, $dest_obj_name, $container_name_source, $container_name_target, $metadata=NULL, $headers=NULL)
     {
         if (!$src_obj_name) {
-            $this->error_str = "Object name not set.";
+            $this->error_str .= "Object name not set.";
             return 0;
         }
 
         if ($container_name_source == "") {
-            $this->error_str = "Container name source not set.";
+            $this->error_str .= "Container name source not set.";
             return 0;
         }
 
         if ($container_name_source != "0" and !isset($container_name_source)) {
-            $this->error_str = "Container name source not set.";
+            $this->error_str .= "Container name source not set.";
             return 0;
         }
 
         if ($container_name_target == "") {
-            $this->error_str = "Container name target not set.";
+            $this->error_str .= "Container name target not set.";
             return 0;
         }
 
         if ($container_name_target != "0" and !isset($container_name_target)) {
-            $this->error_str = "Container name target not set.";
+            $this->error_str .= "Container name target not set.";
             return 0;
         }
 
@@ -1059,10 +1073,10 @@ class CF_Http
             $return_code = 0;
             break;
         case 404:
-            $this->error_str = "Specified container/object did not exist.";
+            $this->error_str .= "Specified container/object did not exist.";
             break;
         default:
-            $this->error_str = "Unexpected HTTP return code: $return_code.";
+            $this->error_str .= "Unexpected HTTP return code: $return_code.";
         }
         return $return_code;
     }
@@ -1072,17 +1086,17 @@ class CF_Http
     function delete_object($container_name, $object_name)
     {
         if ($container_name == "") {
-            $this->error_str = "Container name not set.";
+            $this->error_str .= "Container name not set.";
             return 0;
         }
-        
+
         if ($container_name != "0" and !isset($container_name)) {
-            $this->error_str = "Container name not set.";
+            $this->error_str .= "Container name not set.";
             return 0;
         }
-        
+
         if (!$object_name) {
-            $this->error_str = "Object name not set.";
+            $this->error_str .= "Object name not set.";
             return 0;
         }
 
@@ -1096,10 +1110,10 @@ class CF_Http
             $return_code = 0;
             break;
         case 404:
-            $this->error_str = "Specified container did not exist to delete.";
+            $this->error_str .= "Specified container did not exist to delete.";
             break;
         default:
-            $this->error_str = "Unexpected HTTP return code: $return_code.";
+            $this->error_str .= "Unexpected HTTP return code: $return_code.";
         }
         return $return_code;
     }
@@ -1334,7 +1348,7 @@ class CF_Http
     private function _init($conn_type, $force_new=False)
     {
         if (!array_key_exists($conn_type, $this->connections)) {
-            $this->error_str = "Invalid CURL_XXX connection type";
+            $this->error_str .= "Invalid CURL_XXX connection type";
             return False;
         }
 
@@ -1350,7 +1364,7 @@ class CF_Http
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, True);
             curl_setopt($ch, CURLOPT_CAINFO, $this->cabundle_path);
         }
-	curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, True);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, True);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
         curl_setopt($ch, CURLOPT_MAXREDIRS, 4);
@@ -1364,7 +1378,7 @@ class CF_Http
         if ($conn_type == "PUT_OBJ") {
             curl_setopt($ch, CURLOPT_PUT, 1);
             curl_setopt($ch, CURLOPT_READFUNCTION, array(&$this, '_read_cb'));
-	    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         }
         if ($conn_type == "HEAD") {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "HEAD");
@@ -1373,11 +1387,11 @@ class CF_Http
         if ($conn_type == "PUT_CONT") {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
             curl_setopt($ch, CURLOPT_INFILESIZE, 0);
-	    curl_setopt($ch, CURLOPT_NOBODY, 1);
+            curl_setopt($ch, CURLOPT_NOBODY, 1);
         }
         if ($conn_type == "DEL_POST") {
-        	curl_setopt($ch, CURLOPT_NOBODY, 1);
-	}
+            curl_setopt($ch, CURLOPT_NOBODY, 1);
+        }
         if ($conn_type == "COPY") {
             curl_setopt($ch, CURLOPT_NOBODY, 1);
         }
@@ -1388,7 +1402,7 @@ class CF_Http
     private function _reset_callback_vars()
     {
         $this->_text_list = array();
-	$this->_return_list = NULL;
+        $this->_return_list = NULL;
         $this->_account_metadata = array();
         $this->_account_key = NULL;
         $this->_account_container_count = 0;
@@ -1413,6 +1427,7 @@ class CF_Http
         $this->_cdn_ttl = NULL;
         $this->response_status = 0;
         $this->response_reason = "";
+        $this->error_str = "";
     }
 
     private function _make_path($t="STORAGE",$c=NULL,$o=NULL)
@@ -1426,7 +1441,7 @@ class CF_Http
         }
         if ($c != "") {
             $path[] = rawurlencode($c);
-    	}
+        }
         if ($o) {
             # mimic Python''s urllib.quote() feature of a "safe" '/' character
             #
@@ -1499,7 +1514,7 @@ class CF_Http
 
         return $hdrs;
     }
-    
+
     private function _send_request($conn_type, $url_path, $hdrs=NULL, $method="GET", $force_new=False)
     {
         $this->_init($conn_type, $force_new);
@@ -1510,7 +1525,7 @@ class CF_Http
             throw new ConnectionNotOpenException (
                 "Connection is not open."
                 );
-        
+
         switch ($method) {
         case "COPY":
             curl_setopt($this->connections[$conn_type],
@@ -1525,7 +1540,7 @@ class CF_Http
                 CURLOPT_CUSTOMREQUEST, "POST");
         default:
             break;
-        }        
+        }
 
         curl_setopt($this->connections[$conn_type],
                     CURLOPT_HTTPHEADER, $headers);
@@ -1534,14 +1549,14 @@ class CF_Http
             CURLOPT_URL, $url_path);
 
         if (!curl_exec($this->connections[$conn_type]) && curl_errno($this->connections[$conn_type]) !== 0) {
-            $this->error_str = "(curl error: "
+            $this->error_str .= "(curl error: "
                 . curl_errno($this->connections[$conn_type]) . ") ";
             $this->error_str .= curl_error($this->connections[$conn_type]);
             return False;
         }
         return curl_getinfo($this->connections[$conn_type], CURLINFO_HTTP_CODE);
     }
-    
+
     function close()
     {
         foreach ($this->connections as $cnx) {
@@ -1553,8 +1568,8 @@ class CF_Http
     }
     private function create_array()
     {
-	$this->_text_list = explode("\n",rtrim($this->_return_list,"\n\x0B"));
-	return True;
+        $this->_text_list = explode("\n",rtrim($this->_return_list,"\n\x0B"));
+        return True;
     }
 
 }
